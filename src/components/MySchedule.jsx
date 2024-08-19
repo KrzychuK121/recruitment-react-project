@@ -11,7 +11,11 @@ import {
   Toolbar,
   ViewSwitcher,
   MonthView,
-  DayView, AllDayPanel, AppointmentTooltip, AppointmentForm, ConfirmationDialog,
+  DayView,
+  AllDayPanel,
+  AppointmentTooltip,
+  AppointmentForm,
+  ConfirmationDialog,
 } from '@devexpress/dx-react-scheduler-material-ui';
 
 import LocaleSwitcher from './LocaleSwitcher';
