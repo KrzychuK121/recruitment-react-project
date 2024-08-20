@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {useState} from "react";
+import {useEffect, useState} from "react";
 
 import {EditingState, IntegratedEditing, ViewState} from '@devexpress/dx-react-scheduler';
 
@@ -18,21 +18,69 @@ import {
   ConfirmationDialog,
 } from '@devexpress/dx-react-scheduler-material-ui';
 
+import {
+  collection,
+  getDocs,
+  addDoc,
+  doc,
+  updateDoc,
+  deleteDoc
+} from 'firebase/firestore';
+import {db} from '../Firestore';
+
 import LocaleSwitcher from './LocaleSwitcher';
 import appointmentFormMessages from '../locale_messages/AppointmentFormMessages';
 import allDayPanelMessages from '../locale_messages/AllDayPanelMessages';
 import viewsDisplayNames from '../locale_messages/ViewsDisplayNames';
 import confirmationDialogMessages from '../locale_messages/ConfirmationDialogMessages';
 
-// TODO: Change this method to work with Firestore
-function commitChanges(added, changed, deleted, dataStorage, setDataStorage) {
+function processAppointment(appointment){
+  const processedToSave = {...appointment};
+
+  if(appointment.endDate !== undefined)
+    processedToSave.endDate = appointment.endDate.toISOString();
+
+  if(appointment.startDate !== undefined)
+    processedToSave.startDate = appointment.startDate.toISOString();
+
+  return processedToSave;
+}
+
+function getAppointmentDoc(id) {
+  return doc(db, 'appointments', id);
+}
+
+async function commitChanges(
+  added,
+  changed,
+  deleted,
+  appointments,
+  setAppointments,
+  appointmentsCollectionRef
+) {
   if (added) {
-    const startingAddedId = dataStorage.length > 0 ? dataStorage[dataStorage.length - 1].id + 1 : 0;
-    setDataStorage([...dataStorage, { id: startingAddedId, ...added }]);
+    const processedToSave = processAppointment(added);
+
+    try {
+      const response = await addDoc(appointmentsCollectionRef, processedToSave);
+      setAppointments([...appointments, { id: response.id, ...added }]);
+    } catch (ex) {
+      console.log(ex.message);
+    }
   }
   if (changed) {
-    setDataStorage(
-      dataStorage.map(
+    for (const [id, changedProps] of Object.entries(changed)) {
+      const appointmentReference = getAppointmentDoc(id);
+      try {
+        const processedAppointment = processAppointment(changedProps);
+        await updateDoc(appointmentReference, processedAppointment);
+      } catch (ex) {
+        console.log(ex.message);
+      }
+    }
+
+    setAppointments(
+      appointments.map(
         appointment => (
           changed[appointment.id] ? { ...appointment, ...changed[appointment.id] } : appointment
         )
@@ -40,29 +88,47 @@ function commitChanges(added, changed, deleted, dataStorage, setDataStorage) {
     );
   }
   if (deleted !== undefined) {
-    setDataStorage(dataStorage.filter(appointment => appointment.id !== deleted));
+    try {
+      await deleteDoc(getAppointmentDoc(deleted));
+    } catch (ex) {
+      console.log(ex.message);
+    }
+
+    setAppointments(appointments.filter(appointment => appointment.id !== deleted));
   }
 }
 
 function MySchedule(){
   const defaultCurrDate = '2024-08-18';
-  const [data, setData] = useState(
-    [
-      {
-        id: 1,
-        startDate: new Date(`${defaultCurrDate}T09:45`),
-        endDate: new Date(`${defaultCurrDate}T11:00`),
-        title: 'Spotkanie'
-      },
-      {
-        id: 2,
-        startDate: new Date(`${defaultCurrDate}T12:00`),
-        endDate: new Date(`${defaultCurrDate}T13:30`),
-        title: 'Pójść na siłownię'
-      }
-    ]
-  );
+  const appointmentsCollectionRef = collection(db, 'appointments');
+  const [appointments, setAppointments] = useState([]);
   const [locale, setLocale] = useState('en-US');
+
+  useEffect(
+    () => {
+      async function getAppointments(){
+        try {
+          const response = await getDocs(appointmentsCollectionRef)
+
+          const fetchedAppointments = response.docs.map(
+            doc => (
+              {
+                id: doc.id,
+                ...doc.data()
+              }
+            )
+          );
+
+          setAppointments(fetchedAppointments);
+        } catch (ex) {
+          console.log(ex.message)
+        }
+
+      }
+
+      getAppointments();
+    }, []
+  );
 
   return (
     <>
@@ -72,7 +138,7 @@ function MySchedule(){
       />
 
       <Scheduler
-        data={data}
+        data={appointments}
         locale={locale}
         height={660}
       >
@@ -82,8 +148,15 @@ function MySchedule(){
         />
         <EditingState
           onCommitChanges={
-            ({added, changed, deleted}) => {
-              commitChanges(added, changed, deleted, data, setData);
+            async ({added, changed, deleted}) => {
+              await commitChanges(
+                added,
+                changed,
+                deleted,
+                appointments,
+                setAppointments,
+                appointmentsCollectionRef
+              );
             }
           }
         />
