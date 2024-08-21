@@ -18,115 +18,25 @@ import {
   ConfirmationDialog,
 } from '@devexpress/dx-react-scheduler-material-ui';
 
-import {
-  collection,
-  getDocs,
-  addDoc,
-  doc,
-  updateDoc,
-  deleteDoc
-} from 'firebase/firestore';
-import {db} from '../Firestore';
-
 import LocaleSwitcher from './LocaleSwitcher';
 import appointmentFormMessages from '../locale_messages/AppointmentFormMessages';
 import allDayPanelMessages from '../locale_messages/AllDayPanelMessages';
 import viewsDisplayNames from '../locale_messages/ViewsDisplayNames';
 import confirmationDialogMessages from '../locale_messages/ConfirmationDialogMessages';
-
-function processAppointment(appointment){
-  const processedToSave = {...appointment};
-
-  if(appointment.endDate !== undefined)
-    processedToSave.endDate = appointment.endDate.toISOString();
-
-  if(appointment.startDate !== undefined)
-    processedToSave.startDate = appointment.startDate.toISOString();
-
-  return processedToSave;
-}
-
-function getAppointmentDoc(id) {
-  return doc(db, 'appointments', id);
-}
-
-async function commitChanges(
-  added,
-  changed,
-  deleted,
-  appointments,
-  setAppointments,
-  appointmentsCollectionRef
-) {
-  if (added) {
-    const processedToSave = processAppointment(added);
-
-    try {
-      const response = await addDoc(appointmentsCollectionRef, processedToSave);
-      setAppointments([...appointments, { id: response.id, ...added }]);
-    } catch (ex) {
-      console.log(ex.message);
-    }
-  }
-  if (changed) {
-    for (const [id, changedProps] of Object.entries(changed)) {
-      const appointmentReference = getAppointmentDoc(id);
-      try {
-        const processedAppointment = processAppointment(changedProps);
-        await updateDoc(appointmentReference, processedAppointment);
-      } catch (ex) {
-        console.log(ex.message);
-      }
-    }
-
-    setAppointments(
-      appointments.map(
-        appointment => (
-          changed[appointment.id] ? { ...appointment, ...changed[appointment.id] } : appointment
-        )
-      )
-    );
-  }
-  if (deleted !== undefined) {
-    try {
-      await deleteDoc(getAppointmentDoc(deleted));
-    } catch (ex) {
-      console.log(ex.message);
-    }
-
-    setAppointments(appointments.filter(appointment => appointment.id !== deleted));
-  }
-}
+import {commitChanges, setAppointmentsBySnapshot} from "../database_management/AppointmentsManager";
 
 function MySchedule(){
   const defaultCurrDate = '2024-08-18';
-  const appointmentsCollectionRef = collection(db, 'appointments');
   const [appointments, setAppointments] = useState([]);
   const [locale, setLocale] = useState('en-US');
 
   useEffect(
     () => {
-      async function getAppointments(){
-        try {
-          const response = await getDocs(appointmentsCollectionRef)
+      const unsubscribe = setAppointmentsBySnapshot(setAppointments);
 
-          const fetchedAppointments = response.docs.map(
-            doc => (
-              {
-                id: doc.id,
-                ...doc.data()
-              }
-            )
-          );
-
-          setAppointments(fetchedAppointments);
-        } catch (ex) {
-          console.log(ex.message)
-        }
-
+      return () => {
+        unsubscribe();
       }
-
-      getAppointments();
     }, []
   );
 
@@ -152,10 +62,7 @@ function MySchedule(){
               await commitChanges(
                 added,
                 changed,
-                deleted,
-                appointments,
-                setAppointments,
-                appointmentsCollectionRef
+                deleted
               );
             }
           }
