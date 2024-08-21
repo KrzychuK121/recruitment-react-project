@@ -26,7 +26,6 @@ import confirmationDialogMessages from '../locale_messages/ConfirmationDialogMes
 import {commitChanges, setAppointmentsBySnapshot} from "../database_management/AppointmentsManager";
 
 function MySchedule(){
-  const defaultCurrDate = '2024-08-18';
   const [appointments, setAppointments] = useState([]);
   const [locale, setLocale] = useState('en-US');
 
@@ -53,7 +52,6 @@ function MySchedule(){
         height={660}
       >
         <ViewState
-          defaultCurrentDate={defaultCurrDate}
           defaultCurrentViewName='Week'
         />
         <EditingState
